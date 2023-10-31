@@ -15,7 +15,7 @@ In order to answer the second question a nonparametric logistic regression model
 
 Finally a survival analysis lead to a better knowledge about the development of the disease in time, demonstrating the impact of gender on patients' survival probability.
 
-For a more detailed insight of the study and the mathematical reference please refer to the [report](https://github.com/edoardopalli/ALZHEIMER_prognonpa/blob/main/Report_DiFilippo_Manfrin_Musiari_Palli.pdf).
+For a more detailed insight of the study and the mathematical reference please refer to the [report](https://github.com/edoardopalli/Alzheimer-Detection/blob/main/Report.pdf).
 
 ### References
 Computation were performed using 
