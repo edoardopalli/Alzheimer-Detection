@@ -1,0 +1,266 @@
+setwd("C:/Users/marin/OneDrive/Desktop/Erica progetto nps")
+
+dataset<- read.csv("oasis_longitudinal.csv",header=T,sep=',')
+dataset <- dataset[-which(is.na(dataset$MMSE)),]
+
+prova<- read.csv("oasis_cross-sectional.csv",header=T,sep=',')
+prova <- prova[-which(is.na(prova$MMSE)),]
+
+i1=which(prova$CDR==0.0)
+Group=vector(mode="logical",length=dim(prova)[1])
+Group[i1]=0
+Group[-i1]=1
+prova<-cbind(prova,Group)
+colnames(prova)[5]<-"EDUC"
+
+library(dplyr)
+library(pROC)
+#EDUC: years of education 
+#SES: socio economic status
+#MMSE: mini mental state examination (0:30 30=stato mentale perfetto)
+#CDR: clinical dementia rating (0:3 3=perdita di memoria grave)
+#eTIV: extimated total intracranial volume 
+#nWBV: Normalize Whole Brain Volume
+#ASF: Atlas Scaling Factor (the volume-scaling factor required to match each individual to the atlas target)
+
+
+
+#multidim:  MMSE vs EDUC + nBWV
+library(mgcv)
+library(rgl)
+library(splines)
+library(pbapply)
+
+
+converted <- which(dataset$Group=='Converted')
+conver.data <- dataset[converted,]
+train <- dataset[-converted,-c(10,15)]
+demented <- rep(0, dim(train)[1])
+demented[which(train$Group=='Demented')] <- 1
+demented <- factor(demented)
+
+
+model_gam=gam(demented ~ s(EDUC,bs='cr') + s(nWBV,bs='cr') + s(Age, bs='cr')  + s(MMSE, bs='cr') + s(eTIV) , data = train, select = TRUE, family = binomial)
+summary(model_gam)
+logLik.gam(model_gam)
+AIC(model_gam) #206.8578
+
+pred <- predict(model_gam, newdata = conver.data, type = 'response')
+pred <- as.data.frame(pred)
+pred$type <- rep('Nondemented', dim(pred)[1])
+colnames(pred) <- c('prob','type')
+pred[which(pred$prob>=0.5),2] <- 'Demented'
+
+#predizione su secondo dataset
+pred_nuovodata <- predict(model_gam, newdata = prova, type = 'response')
+pred_nuovodata <- as.data.frame(pred_nuovodata)
+pred_nuovodata$type <- rep('Nondemented', dim(pred_nuovodata)[1])
+colnames(pred_nuovodata) <- c('prob','type')
+pred_nuovodata[which(pred_nuovodata$prob>=0.5),2] <- 'Demented'
+true.lab <- rep('Nondemented', dim(pred_nuovodata)[1])
+true.lab[which(conver.data$CDR>0)] <- 'Demented'
+i.equal <- which(true.lab==pred_nuovodata$type)
+n.equal <- length(i.equal)
+conver.equal <- conver.data[i.equal,]
+n00 <- length(which(conver.equal$CDR==0))
+n11 <- n.equal-n00
+
+n01 <- length(which(pred_nuovodata$type=='Nondemented'&true.lab=='Demented')) #classified,true lab
+n10 <- length(which(pred_nuovodata$type=='Demented'&true.lab=='Nondemented')) #classified,true lab
+
+sensitivity <- n11/(n01+n11)
+specificity <- n00/(n00+n10)
+#sensitiviti molto alta-> buona predizione per i positivi, ma specificity decisamente troppo bassa-< cattiva previsione per i negativi.
+#con questo modello tendiamo a classificare come dementi anche persone che non lo sono. é da migliorare
+
+
+#prove con altri modelli gam
+
+model_gam1=gam(demented ~ s(EDUC,bs='cr') + s(nWBV,bs='cr') + s(Age, bs='cr')  + s(MMSE, bs='cr') , data = train, select = TRUE, family = binomial)
+summary(model_gam1)
+logLik.gam(model_gam1)
+AIC(model_gam1) #206.8579 sono praticamente uguali
+
+pred1 <- predict(model_gam1, newdata = conver.data, type = 'response')
+pred1<- as.data.frame(pred1)
+pred1$type <- rep('Nondemented', dim(pred1)[1])
+colnames(pred1) <- c('prob','type')
+pred1[which(pred1$prob>=0.5),2] <- 'Demented'
+
+#predizione su secondo dataset
+pred_nuovodata1 <- predict(model_gam1, newdata = prova, type = 'response')
+pred_nuovodata1 <- as.data.frame(pred_nuovodata1)
+pred_nuovodata1$type <- rep('Nondemented', dim(pred_nuovodata1)[1])
+colnames(pred_nuovodata1) <- c('prob','type')
+pred_nuovodata1[which(pred_nuovodata1$prob>=0.5),2] <- 'Demented'
+true.lab <- rep('Nondemented', dim(pred_nuovodata1)[1])
+true.lab[which(conver.data$CDR>0)] <- 'Demented'
+i.equal <- which(true.lab==pred_nuovodata1$type)
+n.equal <- length(i.equal)
+conver.equal <- conver.data[i.equal,]
+n00 <- length(which(conver.equal$CDR==0))
+n11 <- n.equal-n00
+
+n01 <- length(which(pred_nuovodata1$type=='Nondemented'&true.lab=='Demented')) #classified,true lab
+n10 <- length(which(pred_nuovodata1$type=='Demented'&true.lab=='Nondemented')) #classified,true lab
+
+sensitivity1 <- n11/(n01+n11)
+specificity1 <- n00/(n00+n10)
+#sensitivity e specificity uguali a prima: errore nel codice o i modelli sono identici? 
+
+
+
+model_gam2=gam(demented ~ s(nWBV,bs='cr') + s(Age, bs='cr')  + s(MMSE, bs='cr') , data = train, select = TRUE, family = binomial)
+summary(model_gam2)
+logLik.gam(model_gam2)
+AIC(model_gam2) #211.405 più alto di prima, modello peggiore in teoria. verifico comunque con predizione,specificity ecc
+
+#predizione su secondo dataset
+pred_nuovodata2 <- predict(model_gam2, newdata = prova, type = 'response')
+pred_nuovodata2 <- as.data.frame(pred_nuovodata2)
+pred_nuovodata2$type <- rep('Nondemented', dim(pred_nuovodata2)[1])
+colnames(pred_nuovodata2) <- c('prob','type')
+pred_nuovodata2[which(pred_nuovodata2$prob>=0.5),2] <- 'Demented'
+true.lab <- rep('Nondemented', dim(pred_nuovodata2)[1])
+true.lab[which(conver.data$CDR>0)] <- 'Demented'
+i.equal <- which(true.lab==pred_nuovodata2$type)
+n.equal <- length(i.equal)
+conver.equal <- conver.data[i.equal,]
+n00 <- length(which(conver.equal$CDR==0))
+n11 <- n.equal-n00
+
+n01 <- length(which(pred_nuovodata2$type=='Nondemented'&true.lab=='Demented')) #classified,true lab
+n10 <- length(which(pred_nuovodata2$type=='Demented'&true.lab=='Nondemented')) #classified,true lab
+
+sensitivity2 <- n11/(n01+n11)
+specificity2 <- n00/(n00+n10)
+#sensitivity migliorata di poco, specificity ancora brutta ma meglio di prima (10% vs 4%)
+
+model_gam3=gam(demented ~ s(EDUC,bs='cr') + s(nWBV,bs='cr') + s(Age, bs='cr')  + s(MMSE, bs='cr') + s(eTIV) + s(I(Age*MMSE), bs='cr'), data = train, select = TRUE, family = binomial)
+summary(model_gam3)
+logLik.gam(model_gam)
+AIC(model_gam) #206.8578
+
+pred3 <- predict(model_gam3, newdata = conver.data, type = 'response')
+pred3 <- as.data.frame(pred3)
+pred3$type <- rep('Nondemented', dim(pred3)[1])
+colnames(pred3) <- c('prob','type')
+pred3[which(pred3$prob>=0.5),2] <- 'Demented'
+
+true.lab <- rep('Nondemented', dim(pred3)[1])
+true.lab[which(conver.data$CDR>0)] <- 'Demented'
+i.equal <- which(true.lab==pred3$type)
+n.equal <- length(i.equal)
+conver.equal <- conver.data[i.equal,]
+n00 <- length(which(conver.equal$CDR==0))
+n11 <- n.equal-n00
+
+n01 <- length(which(pred3$type=='Nondemented'&true.lab=='Demented')) #classified,true lab
+n10 <- length(which(pred3$type=='Demented'&true.lab=='Nondemented')) #classified,true lab
+
+sensitivity <- n11/(n01+n11)
+specificity <- n00/(n00+n10)
+
+#ROC curve
+p0 <- seq(0,1,by=0.001)
+spec <- NULL
+sens <- NULL
+for (i in 1:length(p0)) {
+  pred <- predict(model_gam3, newdata = conver.data, type = 'response')
+  pred <- as.data.frame(pred)
+  pred$type <- rep('Nondemented', dim(pred)[1])
+  colnames(pred) <- c('prob','type')
+  pred[which(pred$prob>=p0[i]),2] <- 'Demented'
+  true.lab <- rep('Nondemented', dim(pred)[1])
+  true.lab[which(conver.data$CDR>0)] <- 'Demented'
+  i.equal <- which(true.lab==pred$type)
+  n.equal <- length(i.equal)
+  conver.equal <- conver.data[i.equal,]
+  n00 <- length(which(conver.equal$CDR==0))
+  n11 <- n.equal-n00
+  
+  n01 <- length(which(pred$type=='Nondemented'&true.lab=='Demented')) #classified,true lab
+  n10 <- length(which(pred$type=='Demented'&true.lab=='Nondemented')) #classified,true lab
+  
+  sensitivity <- n11/(n01+n11)
+  specificity <- n00/(n00+n10)
+  spec <- c(spec, specificity)
+  sens <- c(sens, sensitivity)
+}
+x11()
+plot(rep(1,length(spec))-spec,sens)
+lines(rep(1,length(spec))-spec,sens)
+points(seq(0,1,length.out =length(spec)), seq(0,1,length.out =length(spec)), col='red')
+
+i.bar <- which(sens>=0.6 & spec>=0.5)
+i.bar <- 122
+p <- p0[i.bar]
+pred[which(pred$prob>=p),2] <- 'Demented'
+
+#curva ROC con pacchetto pROC
+predizione<-pred3[,2]
+convertiti<-cbind(conver.data,predizione)
+roc(convertiti,predizione)
+
+#non funziona
+mod.red <- stepwise(model_gam, trace = 1, criterion='BIC') #criterion=BIC. quello che è considerato come Aic in realtà è Bic, Aik=205.02
+
+
+
+#GLM MODEL
+library(tidyverse)
+library(caret)
+library(leaps)
+library(MASS)
+library(RcmdrMisc)
+
+model_glm=glm(demented ~ I(M.F=='F') + EDUC + EDUC:I(M.F=='F') + nWBV + nWBV:I(M.F=='F') + Age + Age:I(M.F=='F')  + MMSE + MMSE:I(M.F=='F') +eTIV + eTIV:I(M.F=='F') , data = train, family = binomial)
+summary(model_glm)
+
+1-model_glm$deviance/model_glm$null.deviance
+
+
+#MODEL SELECTION 
+mod <- stepwise(model_glm, trace = 1,criterion='BIC' ) #criterion=BIC. quello che è considerato come Aic in realtà è Bic, Aik=205.02
+summary(mod)
+1-mod$deviance/mod$null.deviance
+mod$deviance-model_glm$deviance
+mod$deviance/model_glm$deviance 
+
+
+
+pred <- predict(mod, newdata = conver.data, type = 'response')
+pred <- as.data.frame(pred)
+pred$type <- rep('Nondemented', dim(pred)[1])
+colnames(pred) <- c('prob','type')
+true.lab <- rep('Nondemented', dim(conver.data)[1])
+true.lab[which(conver.data$CDR>0)] <- 'Demented'
+p0 <- seq(0,1,by=0.001)
+spec <- NULL
+sens <- NULL
+for (i in 1:length(p0)) {
+  pred <- predict(mod, newdata = conver.data, type = 'response')
+  pred <- as.data.frame(pred)
+  pred$type <- rep('Nondemented', dim(pred)[1])
+  colnames(pred) <- c('prob','type')
+  pred[which(pred$prob>=p0[i]),2] <- 'Demented'
+  true.lab <- rep('Nondemented', dim(pred)[1])
+  true.lab[which(conver.data$CDR>0)] <- 'Demented'
+  i.equal <- which(true.lab==pred$type)
+  n.equal <- length(i.equal)
+  conver.equal <- conver.data[i.equal,]
+  n00 <- length(which(conver.equal$CDR==0))
+  n11 <- n.equal-n00
+  
+  n01 <- length(which(pred$type=='Nondemented'&true.lab=='Demented')) #classified,true lab
+  n10 <- length(which(pred$type=='Demented'&true.lab=='Nondemented')) #classified,true lab
+  
+  sensitivity <- n11/(n01+n11)
+  specificity <- n00/(n00+n10)
+  spec <- c(spec, specificity)
+  sens <- c(sens, sensitivity)
+}
+x11()
+plot(rep(1,length(spec))-spec,sens)
+lines(rep(1,length(spec))-spec,sens)
+points(seq(0,1,length.out =length(spec)), seq(0,1,length.out =length(spec)), col='red')

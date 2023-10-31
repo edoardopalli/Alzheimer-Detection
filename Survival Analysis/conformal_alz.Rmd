@@ -1,0 +1,149 @@
+---
+title: "conformal_alzheimer"
+output:
+  
+  html_document: 
+    df_print: paged
+  pdf_document: default
+  html_notebook: 
+    df_print: paged
+  word_document: default
+editor_options: 
+  chunk_output_type: console
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+options(rgl.debug=T)
+library(rgl)
+knitr::opts_chunk$set(echo = TRUE)
+knitr::knit_hooks$set(webgl = hook_webgl)
+ggplot2::theme_set(ggplot2::theme_bw())
+```
+
+
+#### CON TRAINING  e TEST SET
+```{r}
+setwd('C:/Users/franc/Desktop/NONPA/PROGETTO/ALZHEIMER_prognonpa/EDOARDO')
+train<- read.csv2('train.csv', sep=',')
+test<- read.csv2('test.csv', sep=',')
+```
+```{r}
+library('caret')
+library(conformalClassification)
+library('randomForest')
+# library('conformal')
+# install.packages('conformal')
+algorithm <- "rf"
+trControl <- trainControl(method = "cv",  number=5,savePredictions=TRUE)
+set.seed(3)
+head(data)
+attach(data)
+data <- rbind(train,test)
+#data$LABEL <- rbind(train$LABEL,test$LABEL)
+train$LABEL <-ifelse(train$label=='Dem',2,1)
+test$LABEL <-ifelse(test$label=='Dem',2,1)
+#data$LABEL[which(data$CDR>0)] <- 2
+
+data_train <- cbind(train$LABEL,train[,3:7])
+
+data_test <- cbind(test$LABEL,test[,3:7])
+pValues <- ICPClassification(data_train,data_test)
+pValues <- as.matrix(pValues)
+CPCalibrationPlot(pValues, data_test, "blue")
+CPEfficiency(pValues,data_test$`test$LABEL`,0.05) #0.95
+CPErrorRate(pValues,data_test$`test$LABEL`,0.05) #0.16
+CPValidity(pValues,data_test$`test$LABEL`) #0.8082079
+CPObsFuzziness(pValues,data_test$`test$LABEL`)  #0.5652324
+```
+
+```{r}
+index <- seq(1,100)
+pValues <- as.data.frame(pValues)
+pValues$V3 <- 1-pValues$V1-pValues$V2
+ppp <- t(pValues)
+library(RColorBrewer)
+cols <- brewer.pal(3, "RdPu")
+colnames(ppp)<- as.character(index)
+rownames(ppp) <- c('NonDemented','Demented', '-')
+x11()
+barplot(ppp[,1:10], col= cols,legend=rownames(ppp), xlab=rownames(ppp[,1:10]),ylab='pvalues',args.legend = list(x = "topright"))
+legend('topright', legend=rownames(ppp))
+```
+## CON DATASET COMPLETO
+
+```{r}
+setwd('C:/Users/franc/Desktop/NONPA/PROGETTO/ALZHEIMER_prognonpa/EDOARDO')
+torte <-  read.csv2('oasis_longitudinal.csv', sep=',')
+data<- read.csv2('data.csv', sep=',')
+dataset<- read.csv2('oasis_cross-sectional.csv', sep=',')
+data<- na.omit(data)
+```
+
+```{r}
+library('caret')
+library(conformalClassification)
+library('randomForest')
+# library('conformal')
+# install.packages('conformal')
+algorithm <- "rf"
+trControl <- trainControl(method = "cv",  number=5,savePredictions=TRUE)
+set.seed(3)
+head(data)
+data$LABEL <-1
+data$LABEL[which(data$CDR>0)] <- 2
+data_sample<- data[, c(2,3,4,5,6,7,9,10,11)]
+data_train <- cbind(data$LABEL,data_sample)
+train_n= nrow(data_train)*0.75
+data_test <- data_train[162:216,]
+data_train <- data_train[1:162,]
+pValues <- ICPClassification(data_train,data_test)
+
+CPCalibrationPlot(pValues, data_test, "blue")
+CPEfficiency(pValues,data_test$`data$LABEL`,0.05) #0.2727273
+CPErrorRate(pValues,data_test$`data$LABEL`,0.05) #0.07272727
+CPValidity(pValues,data_test$`data$LABEL`) #0.444126
+CPObsFuzziness(pValues,data_test$`data$LABEL`)  #0.07995061
+
+```
+
+```{r}
+index <- seq(1,55)
+pValues <- as.data.frame(pValues)
+pValues$V3 <- 1-pValues$V1-pValues$V2
+ppp <- t(pValues)
+
+colnames(ppp)<- as.character(index)
+rownames(ppp) <- c('Demented', 'NonDemented','Both')
+x11()
+barplot(ppp, col=c(1,2,3),legend=rownames(ppp))
+
+```
+
+
+```{r}
+plot(pValues)
+barplot(table(pValues[,1],pValues[,2]))
+
+```
+
+```{r}
+#number of trees
+nb_trees <- 100
+model <- train(data_sample, data$LABEL, 
+         algorithm,type="classification", 
+         trControl=trControl,predict.all=TRUE,
+         keep.forest=TRUE,norm.votes=TRUE,
+         ntree=nb_trees)
+showClass('ConformalClassification')
+
+# Instantiate the class and get the p.values
+example <- ConformalClassification$new()
+example$CalculateCVScores(model=model)
+example$CalculatePValues(new.data=LogSDescsTest)
+# we get the p.values:
+example$p.values$P.values
+# we get the significance of these p.values.
+example$p.values$Significance_p.values
+```

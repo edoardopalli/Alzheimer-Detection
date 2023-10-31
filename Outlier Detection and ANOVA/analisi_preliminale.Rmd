@@ -1,0 +1,234 @@
+---
+title: "analisi preliminale"
+---
+
+```{r}
+setwd('C:/Users/Elena/Desktop/Elena/Polimi/MAGISTRALE/Nonparametric statistics/Progetto/github repository/ALZHEIMER_prognonpa/Elena')
+dataset_xsectional <- read.csv("oasis_cross-sectional.csv", header = T)
+dataset_longitudinal <- read.csv("oasis_longitudinal.csv", header = T)
+```
+
+```{r}
+setwd('C:/Users/Elena/Desktop/Elena/Polimi/MAGISTRALE/Nonparametric statistics/Progetto/github repository/ALZHEIMER_prognonpa/EDOARDO')
+training <- read.csv("train.csv", header = T)
+```
+
+```{r}
+library(DepthProc)
+```
+
+```{r}
+head(na.omit(dataset_longitudinal[,c(8,9,11,13,14,15)]))
+```
+```{r}
+head(training)
+```
+
+
+
+
+```{r}
+data_n <- training[,-c(1,2,9)]
+
+n1=table(data_n$label)[1]
+n2=table(data_n$label)[2]
+n <- dim(data_n)[1]
+
+data_new <- data_n[,-6]
+minimum <- apply(data_new,2, FUN=min)
+maximum <- apply(data_new,2, FUN=max)
+diff <- maximum-minimum
+
+data_new <- data.frame(scale(data_new, center=minimum, scale = diff))
+
+groups=split(data_new, data_n$label)
+
+
+med1=depthMedian(groups$'Dem',depth_params = 'Mahalanobis')
+med2=depthMedian(groups$'Nondem',depth_params = 'Mahalanobis')
+```
+
+```{r}
+med1
+med2
+
+```
+
+
+```{r}
+#t0= as.numeric((med1-med2) %*% (med1-med2))      
+t02 <- max(abs(med2-med1)) 
+
+B <- 1000
+seed <- 2022
+set.seed(seed)
+
+#tstat=numeric(B)
+tstat2 <- numeric(B)
+pb=progress::progress_bar$new(total=B, format = " Processing [:bar] :percent eta: :eta")  
+
+
+for (b in 1:B){
+  perm=sample(1:n)
+  datanew.p=data_new[perm,]
+  med1.p=depthMedian(datanew.p[1:n1,], list(method='Mahalanobis'))
+  med2.p=depthMedian(datanew.p[(n1+1):n,], list(method='Mahalanobis'))
+  #tstat[b]= (med1.p-med2.p) %*% (med1.p-med2.p)       
+  tstat2[b] <- max(abs(med2.p-med1.p))
+  pb$tick()
+}
+
+```
+
+
+```{r}
+plot(ecdf(tstat2), xlim=c(0,t02))
+abline(v=t02, col=3, lwd = 4)
+```
+
+
+```{r}
+pval=sum(tstat2>=t02)/B
+pval
+```
+
+
+
+
+
+
+```{r}
+data_n <- training[,-c(1,2,9)]
+
+n1=table(data_n$label)[1]
+n2=table(data_n$label)[2]
+n <- dim(data_n)[1]
+
+data_new <- data_n[,-6]
+minimum <- apply(data_new,2, FUN=min)
+maximum <- apply(data_new,2, FUN=max)
+diff <- maximum-minimum
+
+data_new <- data.frame(scale(data_new, center=minimum, scale = diff))
+
+groups=split(data_new, data_n$label)
+
+
+med1=depthMedian(groups$'Dem',depth_params = 'Tukey')
+med2=depthMedian(groups$'Nondem',depth_params = 'Tukey')
+```
+
+```{r}
+med1
+med2
+
+```
+
+
+```{r}
+#t0= as.numeric((med1-med2) %*% (med1-med2))      
+t02 <- max(abs(med2-med1)) 
+
+B <- 1000
+seed <- 2022
+set.seed(seed)
+
+#tstat=numeric(B)
+tstat2 <- numeric(B)
+pb=progress::progress_bar$new(total=B, format = " Processing [:bar] :percent eta: :eta")  
+
+
+for (b in 1:B){
+  perm=sample(1:n)
+  datanew.p=data_new[perm,]
+  med1.p=depthMedian(datanew.p[1:n1,], list(method='Tukey'))
+  med2.p=depthMedian(datanew.p[(n1+1):n,], list(method='Tukey'))
+  #tstat[b]= (med1.p-med2.p) %*% (med1.p-med2.p)       
+  tstat2[b] <- max(abs(med2.p-med1.p))
+  pb$tick()
+}
+
+```
+
+
+```{r}
+plot(ecdf(tstat2), xlim=c(0,t02))
+abline(v=t02, col=3, lwd = 4)
+```
+
+
+```{r}
+pval=sum(tstat2>=t02)/B
+pval
+```
+
+
+
+
+
+
+
+permutation test to check the importance of our variable Age:
+
+
+```{r}
+age_dem <- training[which(training$label=='Dem'),3]
+age_nondem <- training[which(training$label=='Nondem'),3]
+
+# Parameters:
+n1 <- length(age_dem)
+n2 <- length(age_nondem)
+n <- n1 + n2
+
+set.seed(2022)
+
+# pooled sample:
+x_pooled <- c(age_dem,age_nondem)
+```
+
+
+```{r}
+# Test statistic: absolute difference between the two means
+T0 <- abs(mean(age_dem) - mean(age_nondem))
+
+# CMC simulation of permutational distribution under H0
+B <- 1000
+T_vec <- numeric(B)
+
+for(perm in 1:B){
+  # permutation:
+  permutation <- sample(1:n)
+  x_perm <- x_pooled[permutation]
+  x1_perm <- x_perm[1:n1]
+  x2_perm <- x_perm[(n1+1):n]
+  # test statistic:
+  T_vec[perm] <- abs(mean(x1_perm) - mean(x2_perm))
+}
+```
+
+
+
+```{r}
+plot(ecdf(T_vec),xlim=range(c(T_vec,T0)))
+abline(v=T0,col=3,lwd=2)
+```
+
+
+```{r}
+# p-value
+p_val <- sum(T_vec>=T0)/B
+p_val
+
+```
+
+null pvalue, significantly different
+
+
+
+
+
+
+
+
+
+

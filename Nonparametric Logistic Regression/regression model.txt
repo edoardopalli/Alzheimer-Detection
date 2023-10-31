@@ -1,0 +1,25 @@
+DOMANDE
+dataset su cui fare test
+altri indicatori per valutare goodness of fit
+pacchetti per curva roc
+come inserire interazione (con variabile categorica ad esempio) nel gam
+come studiare multicollinearita? vif factor in regressione logistica con dummy 
+come fare model selection in gam
+
+RISPOSTE
+ROC: pROC
+param: accuracy, score.F1
+modello ad effetti misti/random effect model/hierarchial models: modelli frequentisti, gruppi=id_paziente
+pacchetto lme4, lme (vanno bene anche per glm, formula:Glm/y~x1+x2 + (1|patiend_id))
+per gam: funzione gamm {mgcv} 
+per predict bisogna anche specificare patient.id
+
+per model selection in gam: usare pacchetto gam -> step.gam
+
+DA AGGIUNGERE
+conformal bands
+
+
+
+https://stat.ethz.ch/R-manual/R-devel/library/mgcv/html/step.gam.html
+https://stats.stackexchange.com/questions/430412/vif-for-categorical-variable-with-more-than-2-categories

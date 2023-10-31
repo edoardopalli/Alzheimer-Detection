@@ -1,0 +1,624 @@
+---
+title: "SURVIVAL CORRETTO"
+output: html_document
+date: '2022-06-28'
+---
+---
+title: "Lab 13 - Survival analysis"
+date: 2021/11/19
+author: "Nonparametric statistics ay 2021/2022"
+output:
+  
+  html_document: 
+    df_print: paged
+  pdf_document: default
+  html_notebook: 
+    df_print: paged
+  word_document: default
+editor_options: 
+  chunk_output_type: console
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+options(rgl.debug= T)
+library(rgl)
+knitr::opts_chunk$set(echo = TRUE)
+knitr::knit_hooks$set(webgl = hook_webgl)
+ggplot2::theme_set(ggplot2::theme_bw())
+```
+
+
+## Loading necessary libraries
+
+```{r message=FALSE, warning=FALSE}
+library(survival)
+library(survminer)
+library(dplyr) 
+library(ggplot2)
+library(knitr)
+library(broom)
+```
+```{r}
+ind <- dataset[dataset$Group=='Converted'& dataset$Visit==1,]
+```
+
+PREPARAZIONE DEL DATASET
+
+```{r}
+setwd("C:/Users/franc/Desktop/NONPA/PROGETTO")
+
+library(stringr)
+dataset_old <- read.csv("oasis_longitudinal.csv")
+head(dataset_old)
+colnames(dataset_old)
+
+## DEMENTI  
+dataset_old$ID = str_sub(dataset_old$Subject.ID,-3) 
+dementi_prima <- dataset_old[dataset_old$Group=='Demented'& dataset_old$Visit==1,]
+dementi_prima$status <- 2
+dementi_prima$group_new <- 'Demented'
+##NON DEMENTI
+nondementi_last <- dataset_old[dataset_old$Group=='Nondemented',]
+nondementi_last <-nondementi_last%>%group_by(ID)%>% mutate(max_visit=max(Visit))%>%ungroup()%>% filter(Visit==max_visit)
+length(unique(nondementi_last$ID))
+nondementi_last$status<-1
+nondementi_last$group_new <- 'Nondemented'
+## CONVERTED
+
+converted_first <- dataset_old[dataset_old$Group=='Converted'&dataset_old$CDR >0,]
+converted_first <-converted_first%>%group_by(ID)%>% mutate(min_visit=min(Visit))%>%ungroup()%>% filter(Visit==min_visit)
+converted_first$group_new <- 'Demented'
+converted_first$status <- 2
+#ALL TOGETHER 
+dataset <- rbind(nondementi_last[,-17],dementi_prima,converted_first[,-17])
+
+dataset$time_y <- dataset$MR.Delay / 365
+dataset$status_fact <- factor(dataset$Group)
+colnames(dataset) <- c( "Subject.ID",  "MRI.ID"   ,   "Group"   ,    "Visit"   ,    "time" , "M.F"       ,  "Hand" , "age"     ,    "EDUC"   ,     "SES"  ,       "MMSE"     ,   "CDR"     ,    "eTIV"    ,    "nWBV"   ,   "ASF"  ,       "ID"     ,     "status"   ,   "group_new"  , "time_y"    ,  "status_fact")
+
+```
+
+
+```{r}
+ind_ <- which(dataset$ID=='131')
+x11()
+ggplot(data=dataset[-146,],aes(x=ID,y=time_y)) + 
+  geom_bar(stat='identity',width=0.2) +
+  geom_point(aes(color=status_fact,shape=status_fact),size=6) +
+  coord_flip()
+
+
+```
+
+
+## Kaplan-Meier estimator for survival curve
+ $$ S(t) $$ 
+```{r}
+fit <- survfit(Surv(dataset$time, status==2) ~ 1, data = dataset)
+# status==1 -> when the event occurred
+
+summary(fit)
+
+```
+
+
+```{r}
+kable(head(tidy(fit),20))
+```
+
+The median survival times represents the time at which the survival
+probability, S(t), is 0.5.
+
+```{r,warning=FALSE}
+surv_median(fit)
+# median = 1331 -> median time of event
+```
+
+
+### Kaplan-Meier plots
+
+```{r}
+ggsurvplot(fit,
+           risk.table = TRUE, # Add risk table
+           risk.table.col = "strata", # Change risk table color by groups
+           surv.median.line = "hv", # Specify median survival
+           ggtheme = theme_bw(), # Change ggplot2 theme
+           break.time.by=360,
+           title="Kaplan-Meier Curve for Alzheimer Survival")
+```
+
+
+
+```{r}
+cumulative_incidence <- 1 - fit$surv
+```
+
+
+```{r}
+ggsurvplot(fit,
+           risk.table = TRUE, # Add risk table
+           risk.table.col = "strata", # Change risk table color by groups
+           surv.median.line = "hv", # Specify median survival
+           ggtheme = theme_bw(), # Change ggplot2 theme
+           break.time.by=90,
+           fun='event',
+           title="Cumulative Incidence Curve for Alzheimer Survival")
+```
+
+
+Nelson-Aalen cumulative hazard rate estimator 
+
+```{r}
+H <- fit$cumhaz
+```
+
+
+```{r}
+ggsurvplot(fit,
+           risk.table = TRUE, # Add risk table
+           ggtheme = theme_bw(), # Change ggplot2 theme
+           break.time.by=360,
+           fun='cumhaz',
+           title="Cumulative Hazard Curve for Alzheimer Survival")
+```
+
+### Kaplan-Meier Curves between groups: GENDER
+
+We want to consider now the gender groups and investigate if there is a
+difference in terms of survival among the two groups.
+$$S(t) \sim Sex $$
+
+
+
+```{r}
+dataset$sex <- 0
+dataset$sex[which(dataset$M.F=='F')] <-1
+fit.sex <- survfit(Surv(time, status) ~ sex, data=dataset)
+surv_median(fit.sex)
+ggsurvplot(fit.sex, conf.int = T,
+           risk.table = TRUE, # Add risk table
+           risk.table.col = "strata", # Change risk table color by groups
+           surv.median.line = "hv", # Specify median survival
+           ggtheme = theme_bw(), # Change ggplot2 theme
+           break.time.by=360,
+           legend.title="SEX",  legend.labs=c('M','F'), 
+           palette=c("darkblue","red"), 
+           title="Kaplan-Meier Curves by gender class for Alzheimer Survival")
+```
+
+
+
+It looks like there's some differences in the curves between gender class patients. Is there statistical evidence for that difference?
+
+```{r}
+
+log_rank_test <- survdiff(Surv(time, status) ~ sex,data=dataset)
+log_rank_test  
+```
+
+$p=0.01$, the difference in survival between the gender class is significant
+
+
+## Hazard Ratio
+
+```{r}
+hazard_ratio <- (log_rank_test$obs[1]/log_rank_test$exp[1])/(log_rank_test$obs[2]/log_rank_test$exp[2])
+hazard_ratio #
+
+```
+HR< 1 -> group 1 protective factor ( less risk)
+HR= 1 -> similar risk
+HR> 1 -> group 1 risk factor (more risk)
+
+$HR_{M,F} = 1.570315> 1$ 
+
+being a male is a risk factor risk
+
+
+
+## Cox model
+
+ Let us start by
+plotting a histogram showing the distribution of age.
+
+```{r}
+attach(dataset)
+hist(dataset[sex=='0'& Group=='Converted',]$age, xlab='Age [years]', main='Histogram of age of Converted Male in Alzheimer Data', col="darkblue",bin=10)
+hist(dataset[sex=='1'& Group=='Converted',]$age, xlab='Age [years]', main='Histogram of age of Converted Female in Alzheimer Data', col="red")
+hist(dataset$age, xlab='Age [years]', main='Histogram of  age in Alzheimer Data')
+summary(dataset[sex=='1',]$age)
+hist(dataset[dataset$Group=='Converted',]$age, xlab='Age [years]', main='Histogram of age of Converted patient in Alzheimer Data', col=cols[2])
+```
+
+
+Let us consider the continuous variable age and fit a univariate Cox
+regression model
+
+```{r}
+cox.age <- coxph(Surv(time_y, status) ~ age, data = dataset)
+cox.age
+```
+
+```{r}
+summary(cox.age)
+```
+```{r}
+library(RColorBrewer)
+cols <- brewer.pal(3, "RdPu")
+plot(survfit(cox.age, data=dataset), 
+     col=cols[3], lwd=2, lty=1,
+     xlab='Time ', ylab='Survival Probability',
+     main='Baseline estimated survival probability')
+grid()
+abline(h=0.5, l='-')
+```
+
+# age and sex
+
+```{r}
+cox.age.sex <- coxph(Surv(time_y, status) ~ age + sex, data = dataset)
+cox.age.sex
+```
+```{r}
+summary(cox.age.sex)
+```
+
+
+```{r}
+cols=  brewer.pal(3, "RdPu")
+library(RColorBrewer)
+plot(survfit(cox.age.sex, data=dataset), 
+     col=cols[3], lwd=2, lty=1,
+     xlab='Time ', ylab='Survival Probability',
+     main='Baseline estimated survival probability wrt Age and Gender')
+grid()
+```
+
+## Multivariate Cox regression
+
+We want now to describe how different factors jointly impact on
+survival. To answer to this question, we will perform a multivariate Cox
+regression analysis with covariates age, sex, Karnofsky performance
+score rated by physician and weight loss. Check if you categorical
+covariates are considered factors:
+
+```{r}
+glimpse(dataset)
+
+dataset$sex <- as.factor(dataset$M.F)
+
+```
+
+Fit the Cox's regression model:
+
+```{r}
+mod.cox <- coxph(Surv(time, status) ~ age + sex + EDUC + MMSE, data =  dataset)
+summary(mod.cox)
+```
+
+
+### Visualizing Hazard ratios
+
+You can visualize Hr and its CIs using the `ggforest()` function of
+package survminer:
+
+```{r}
+ggforest(mod.cox, data=dataset)
+```
+Because the confidence interval for HR includes 1, these
+results indicate that age makes a smaller contribution to the difference
+in the HR after adjusting for the other covariates.
+
+Plot the baseline survival function $S_0(t)$
+
+```{r}
+plot(survfit(mod.cox, data=dataset), 
+     col="darkorange2", lwd=2, lty=1,
+     xlab='Time ', ylab='Survival Probability',
+     main='Baseline estimated survival probability')
+grid()
+```
+```{r}
+mod.cox_age_sex <- coxph(Surv(time, status) ~ age + sex , data =  dataset)
+summary(mod.cox_age_sex)
+```
+```{r}
+plot(survfit(mod.cox_age_sex, data=dataset), 
+     col=cols[3], lwd=2, lty=1,
+     xlab='Time ', ylab='Survival Probability',
+     main='Baseline estimated survival probability')
+grid()
+```
+
+```{r}
+mod.cox_MMSE <- coxph(Surv(time, status) ~ MMSE , data =  dataset)
+summary(mod.cox_MMSE)
+```
+```{r}
+plot(survfit(mod.cox_MMSE, data=dataset), 
+     col=cols[3], lwd=2, lty=1,
+     xlab='Time ', ylab='Survival Probability',
+     main='Baseline estimated survival probability')
+grid()
+```
+
+```{r}
+mod.cox_ALL <- coxph(Surv(time, status) ~ age + sex + EDUC + MMSE+ SES + eTIV, data =  dataset)
+summary(mod.cox_ALL)
+```
+
+```{r}
+plot(survfit(mod.cox_ALL, data=dataset), 
+     col=cols[3], lwd=2, lty=1,
+     xlab='Time ', ylab='Survival Probability',
+     main='Baseline estimated survival probability')
+grid()
+```
+
+alla fine il più significativo è sempre MMSE
+### Cox Model Assumptions and Goodness of fit
+
+
+When used inappropriately, statistical models may give rise to
+misleading conclusions. Therefore, it is important to check that a given
+model is an appropriate representation of the data.
+
+A first graphical option to check the goodness of fit is to check if the
+Martingale Residuals
+
+$$
+M_i=\delta_i-H(t_i, \mathbf{X}_i, \boldsymbol{\beta}), \quad n=1,\ldots,N
+$$
+
+with $\delta_i$ 0-1 function indicating whether the $i$-th unit has
+experienced the event (1 if present, 0 otherwise) and
+
+$$
+H(t_i, \mathbf{X}_i, \boldsymbol{\beta})=-\log \left[\hat{S}\left(t_i,\mathbf{X}_i, \boldsymbol{\beta} \right)\right]
+$$
+
+have $0$ mean along time. Recall that in a Cox model for each patient
+$i$ the corresponding survival function is estimated with $$
+\hat{S}\left(t ,\mathbf{X}_i, \boldsymbol{\beta}\right)=\left[\hat{S}_{0}(t)\right]^{\exp \left(\boldsymbol{X}_{i}^{T} \boldsymbol{\beta}\right)}$$
+
+where
+
+$$\hat{S_{0}}(t)=\prod_{j: t_{j}^{*}<t}\left(1-\frac{1}{\sum_{k \in R\left(t_{j}^{*}\right)} \exp \left(\boldsymbol{X}_{k}^{T} \hat{\boldsymbol{\beta}}\right)}\right)$$
+
+
+
+```{r}
+ggcoxdiagnostics(mod.cox, type = "martingale", labels= 'age + sex + EDUC + MMSE')
+```
+```{r}
+ggcoxdiagnostics(mod.cox_MMSE, type = "martingale" ,labels='MMSE')
+```
+```{r}
+ggcoxdiagnostics(mod.cox_ALL, type = "martingale" ,labels='ALL')
+```
+
+```{r}
+ggcoxdiagnostics(mod.cox_age_sex, type = "martingale",labels= 'age sex')
+```
+
+
+Sometimes, martingale residuals are difficult to be interpreted. The
+deviance residual is a normalized transform of the martingale residual:
+
+$$ \hat{D}_{i}=\operatorname{sign}\left(M_{i}\right) \sqrt{-2\left[M_{i}+\delta_{i} \log \left(\delta_{i}-M_{i}\right)\right]} \quad=1,\ldots,N$$
+
+These residuals should be roughly symmetrically distributed about zero
+with a standard deviation of 1.
+
+-   Positive values correspond to individuals that "died too soon"
+    compared to expected survival times.
+-   Negative values correspond to individual that "lived too long".
+-   Very large or small values are outliers, which are poorly predicted
+    by the model.
+
+It is also possible to check outliers by visualizing the deviance
+residuals. Example of deviance residuals:
+
+```{r}
+ggcoxdiagnostics(mod.cox, type = "deviance")
+```
+```{r}
+ggcoxdiagnostics(mod.cox_MMSE, type = "deviance" ,labels='MMSE')
+```
+The pattern doesn't look fairly symmetric around $0$, not a good fit
+```{r}
+ggcoxdiagnostics(mod.cox_ALL, type = "deviance" ,labels='ALL')
+```
+
+```{r}
+ggcoxdiagnostics(mod.cox_age_sex, type = "deviance",labels= 'age sex')
+```
+
+A second graphical option could be to use the Schoenfeld residuals to
+examine model fit and detect outlying covariate values. Shoenfeld
+residuals represent the difference between the observed covariate and
+the expected given the risk set at that time. They should be flat,
+centered about zero. In principle, the Schoenfeld residuals are
+independent of time. A plot that shows a non-random pattern against time
+is evidence of violation of the PH assumption.
+
+```{r}
+ggcoxdiagnostics(mod.cox, type = "schoenfeld")
+```
+```{r}
+ggcoxdiagnostics(mod.cox_MMSE, type = "schoenfeld")
+```
+```{r}
+ggcoxdiagnostics(mod.cox_ALL, type = "schoenfeld" ,labels='ALL')
+```
+
+```{r}
+ggcoxdiagnostics(mod.cox_age_sex, type = "schoenfeld",labels= 'age sex')
+```
+
+
+Another graphical method for checking proportional hazards is to plot
+$log(-log(KM(t)))$ vs. $t$ or $log(t)$ and look for parallelism. This
+can be done only for categorical covariates.
+
+We consider the KM estimators for sex variable:
+
+```{r}
+sex.km <- survfit(Surv(time, status) ~ sex, data = dataset)
+```
+
+We plot $log(-log(KM(t)))$ using option `fun='cloglog'` in
+`plot.survfit()`
+
+```{r}
+plot(sex.km, fun='cloglog', 
+     col=c("deeppink2","dodgerblue2"), lwd=2, lty=1,
+     ylab="log(-log(Survival Probability))")
+grid()
+legend('topleft', c("Female", "Male"),
+       lty=c(1,1), lwd=c(2,2), col=c("deeppink2","dodgerblue2"))
+```
+
+Curves seem to be NOT parallel -\> PH assumption seems NOT satisfied for
+gender.
+
+The function `cox.zph()` in the survival package provides a convenient
+solution to test the proportional hazards assumption for each covariate
+included in a Cox regression model fit.
+
+For each covariate, the function cox.zph() correlates the corresponding
+set of scaled Schoenfeld residuals with time, to test for independence
+between residuals and time. Additionally, it performs a global test for
+the model as a whole.
+
+The proportional hazard assumption is supported by a non-significant
+relationship between residuals and time, and refused by a significant
+relationship.
+
+Test for PH using scaled Schoenfeld test for PH
+
+-   H0: Hazards are proportional
+-   H1: Hazards are NOT proportional
+
+cox.zph() return tests for each X and for the global model
+
+```{r}
+test.ph <- cox.zph(mod.cox)
+test.ph
+```
+From the output above, the global test is statistically significant (small pvalue, reject H0).
+Therefore, we can not assume the proportional hazards. In particular,
+the test for ph.MMSE is highly significant.
+
+```{r}
+test.ph_ALL <- cox.zph(mod.cox_ALL)
+test.ph_ALL
+```
+same as before 
+```{r}
+test.ph_MMSE <- cox.zph(mod.cox_MMSE)
+test.ph_MMSE
+```
+
+```{r}
+test.ph_age_sex <- cox.zph(mod.cox_age_sex)
+test.ph_age_sex
+```
+age is higly significant
+
+Plot the scaled schoenfeld residuals:
+
+
+```{r}
+ggcoxdiagnostics(mod.cox, type = "scaledsch")
+```
+
+```{r}
+ggcoxdiagnostics(mod.cox_MMSE, type = "scaledsch")
+```
+
+```{r}
+ggcoxdiagnostics(mod.cox_ALL, type = "scaledsch")
+```
+
+```{r}
+ggcoxdiagnostics(mod.cox_age_sex, type = "scaledsch")
+```
+
+So... What do we do? As a very basic primer on Survival Analysis we will
+not have time to thoroughly cover all possible solutions, we will
+(briefly) focus on stratification.
+
+## Stratified Cox Model
+
+Sometimes the proportional hazard assumption is violated for some
+covariate. In such cases, it is possible to stratify taking this
+variable into account and use the proportional hazards model in each
+stratum for the other covariates. We include in the model predictors
+that satisfy the proportional hazard assumption and remove from it the
+predictor that is stratified.
+
+Now, the subjects in the $k$-th stratum have an arbitrary baseline
+hazard function $h_{0k}(t)$ and the effect of other explanatory
+variables on the hazard function can be represented by a proportional
+hazards model in that stratum: $$h_{k}(t|X) = h_{0k}(t) \exp(\beta^TX)$$
+with $k=1,\ldots,K$ levels of the variable that is stratified.
+
+In the Stratified Proportional Hazards Model the regression coefficients
+are assumed to be the same for each stratum although the baseline hazard
+functions may be different and completely unrelated. The model may seem
+complex, but it is entirely straightforward in the likelihood framework,
+as we can simply combine likelihoods across strata (i.e., we multiply
+each strata-wise contribution). This is easily accomplished in R by
+using the `strata()` argument:
+
+```{r}
+mod.cox.strata <- coxph(Surv(time, status) ~ age + sex + strata(MMSE) , data =  dataset)
+summary(mod.cox.strata)
+```
+
+Test for PH assumption
+
+```{r}
+test.ph.strata <- cox.zph(mod.cox.strata)
+test.ph.strata
+```
+ 
+PH assumptions are satisfied for all variables and for the global model.
+
+```{r}
+mod.cox.strata_ALL <- coxph(Surv(time, status) ~  age + sex + EDUC + strata(MMSE)+ SES + eTIV, data =  dataset)
+summary(mod.cox.strata_ALL)
+```
+
+Test for PH assumption
+
+```{r}
+test.ph.strata_ALL <- cox.zph(mod.cox.strata_ALL)
+test.ph.strata_ALL
+```
+
+
+
+###PREDICTION
+
+
+```{r}
+attach(train)
+train$nWBV<- as.numeric(train$nWBV)
+fem_pt <- DepthProc::depthMedian(as.matrix(train[M.F=='F'&label=='Nondem',3:7]),list(method='Tukey'))
+unique(label)
+train$label <-  as.factor(train$label, levels=c('Nondem','Dem'))
+mod.cox_ALL <- coxph(Surv(time, status) ~ age + sex + EDUC + MMSE+ SES + eTIV, data =  dataset)
+summary(mod.cox_ALL)
+new_df <- with(dataset,
+               data.frame(age = c(50,65,80) )#consider ages equal to 50, 65 and 80
+)
+
+#estimate survival:
+fit.new <- survfit(cox, newdata = new_df)
+fit.new
+```
+

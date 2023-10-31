@@ -1,0 +1,250 @@
+---
+title: 'anova analysis'
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+  html_notebook: default
+---
+
+
+```{r setup, include=FALSE}
+library(rgl)
+knitr::opts_chunk$set(echo = TRUE)
+knitr::knit_hooks$set(webgl = hook_webgl)
+```
+
+```{css, echo=FALSE}
+.extracode {
+background-color: lightblue;
+}
+```
+```{r}
+dataset_xsectional <- read.csv("oasis_cross-sectional.csv", header = T)
+dataset_longitudinal <- read.csv("oasis_longitudinal.csv", header = T)
+training <- read.csv('train.csv', header = T)
+```
+
+
+We are interested in the importance of variables sex and age in the prediction of the state of the patient (if demented or not). So we can start analyzing these two variables wrt the grouping: sex and age can be thought as categorical and we use CDR as dependent variable.
+
+
+Check for only the **FIRST** visit of each patient to have independence
+
+```{r}
+data11 <- dataset_longitudinal[which(dataset_longitudinal$Visit == 1),]
+data11 <- data.frame(as.factor(data11$M.F), data11$CDR)
+colnames(data11) <- c('M.F','CDR')
+```
+
+```{r}
+anova12 <- aov(CDR~M.F, data=data11)
+summary(anova12)
+shapiro.test(anova12$residuals)
+plot(anova12)
+```
+
+
+
+
+since we cannot assume normality of residuals (pvalue very low) we should use a nonparametric test (ex kruskal wallis)
+
+
+```{r}
+kw11 <- kruskal.test(CDR~M.F, data=data11)
+kw11
+```
+hence the sex is significant
+
+
+
+or use a permutation test:
+
+```{r}
+B = 1000
+seed = 26111992
+```
+
+```{r}
+# TEST ON THE FACTOR MF
+T0_MF <- summary.aov(aov(CDR ~  M.F, data = data11))[[1]][1,4]
+
+n <- nrow(data11)
+
+```
+
+```{r}
+T_MF <- numeric(B)
+for(perm in 1:B){
+  permutation <- sample(n)
+  CDR.perm <- data11$CDR[permutation]
+  T_MF[perm] <- summary.lm(aov(CDR.perm ~ M.F , data = data11))$f[1]
+  
+}
+sum(T_MF >= T0_MF)/B
+
+```
+that is significant
+
+
+
+
+Now we add the cross-sectional dataset (still with only the first visit to have independent data):
+
+```{r}
+data2 <- data.frame(as.factor(dataset_xsectional$M.F),  dataset_xsectional$CDR)
+colnames(data2) <- c('M.F','CDR')
+
+datat <- rbind(data11, data2)
+datat <- na.omit(datat)
+```
+
+```{r}
+shapiro.test(aov(CDR~M.F, data=datat)$residuals)
+```
+
+we don't have normality of residuals
+
+
+
+
+since we cannot assume normality of residuals (pvalue very low) we should use a nonparametric test (ex kruskal wallis)
+
+
+```{r}
+kw21 <- kruskal.test(CDR~M.F, data=datat)
+kw21
+```
+hence the sex is significant (reject H0)
+
+
+
+
+```{r}
+# TEST ON THE FACTOR MF
+T0_MF <- summary.aov(aov(CDR ~  M.F, data = datat))[[1]][1,4]
+
+n <- nrow(datat)
+
+```
+
+```{r}
+T_MF <- numeric(B)
+for(perm in 1:B){
+  permutation <- sample(n)
+  CDR.perm <- datat$CDR[permutation]
+  T_MF[perm] <- summary.lm(aov(CDR.perm ~ M.F , data = datat))$f[1]
+  
+}
+sum(T_MF >= T0_MF)/B
+
+```
+
+so sex is signficant (we reject H0)
+
+```{r}
+plot(ecdf(T_MF))
+abline(v=T0_MF,col=3,lwd=2)
+```
+
+
+
+
+
+We could consider only the cross-sectional dataset (made by only first visits):
+
+
+```{r}
+shapiro.test(aov(CDR~M.F, data=data2)$residuals)
+```
+we don't have normality of residuals
+
+
+
+Since we cannot assume normality of residuals (pvalue very low) we should use a nonparametric test (ex kruskal wallis)
+
+
+```{r}
+kw212 <- kruskal.test(CDR~M.F, data=data2)
+kw212
+```
+hence the sex is not significant at 5%, but it is at 10%
+
+
+
+or permutation test: 
+
+```{r}
+# TEST ON THE FACTOR MF
+T0_MF <- summary.aov(aov(CDR ~  M.F, data = data2))[[1]][1,4]
+
+n <- nrow(data2)
+
+
+```
+
+```{r}
+T_MF <- numeric(B)
+for(perm in 1:B){
+  permutation <- sample(n)
+  CDR.perm <- data2$CDR[permutation]
+  T_MF[perm] <- summary.lm(aov(CDR.perm ~ M.F , data = data2))$f[1]
+  
+}
+sum(T_MF >= T0_MF)/B
+
+```
+
+
+
+So in this case sex is not significant at 5%.
+
+However in our study we will consider the whole dataset of first visit, where sex is significant.
+
+
+
+
+
+
+
+We can also rapidly check the other cathegorical variables (with the complete dataset of first visits):
+
+```{r}
+library(dplyr)
+data_l <- select(dataset_longitudinal[which(dataset_longitudinal$Visit == 1),], 6, 8:15)
+data_x <- select(dataset_xsectional, 2, 4:11)
+colnames(data_x)[colnames(data_x) == 'Educ'] <- 'EDUC'
+data_total<-bind_rows(data_l,data_x)
+```
+
+
+
+```{r}
+anova3 <- aov(CDR~EDUC, data=data_total)
+summary(anova3)
+shapiro.test(anova3$residuals)
+kw3 <- kruskal.test(CDR~EDUC, data=data_total)
+kw3
+```
+```{r}
+anova4 <- aov(CDR~SES, data=data_total)
+summary(anova4)
+shapiro.test(anova4$residuals)
+kw4 <- kruskal.test(CDR~SES, data=data_total)
+kw4
+```
+```{r}
+anova5 <- aov(CDR~MMSE, data=data_total)
+summary(anova5)
+shapiro.test(anova5$residuals)
+kw5 <- kruskal.test(CDR~MMSE, data=data_total)
+kw5
+```
+
+
+all significant variables
+
+
+
+
+

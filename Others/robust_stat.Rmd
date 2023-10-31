@@ -1,0 +1,161 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+plot(cars)
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
+
+
+
+
+#PROGETTO, PARTE ROBUST STAT
+```{r}
+library(rgl)
+knitr::opts_chunk$set(echo = TRUE)
+knitr::knit_hooks$set(webgl = hook_webgl)
+ggplot2::theme_set(ggplot2::theme_bw())
+```
+```{r message=FALSE, warning=FALSE}
+library(robustbase)
+library(psych)
+library(MASS)
+library(ellipse)
+library(here)
+library(DescTools)
+library(knitr)
+library(RobStatTM)
+```
+
+```{r}
+setwd("C:/Users/marin/OneDrive/Desktop/Erica progetto nps")
+dataset<-read.table("oasis_cross-sectional.csv",header=T,sep=",")
+dataset
+```
+```{r}
+```
+
+
+```{r}
+DATA<-dataset[,-c(1,2,3,5,6,8,12)]
+DATA<-na.omit(DATA)
+DATA
+plot(DATA)
+```
+```{r}
+fit_MCD <- covMcd(x = DATA, alpha = .75, nsamp = "best")
+fit_MCD
+```
+```{r}
+DATA2<-DATA[,-3]
+DATA2
+fit_MCD2 <- covMcd(x = DATA2, alpha = .75, nsamp = "best")
+fit_MCD2
+
+```
+```{r}
+ind_best_subset2 <- fit_MCD2$best
+N <- nrow(DATA2)
+p <- ncol(DATA2)
+plot(DATA2, col=ifelse(1:N%in%ind_best_subset2,"black","red"),pch=19)
+```
+```{r}
+dplyr::near(fit_MCD2$raw.center,colMeans(DATA2[ind_best_subset,]))
+dplyr::near(fit_MCD2$raw.cov,cov(DATA2[ind_best_subset,])*prod(fit_MCD2$raw.cnp2))
+h <- fit_MCD2$quan
+dplyr::near(fit_MCD2$raw.cnp2[1],(h/N)/pchisq(qchisq(p = h/N,df = p),df = p+2))
+```
+```{r}
+ind_rew_obs <-
+  which(
+    mahalanobis(
+      x = DATA2,
+      center = fit_MCD2$raw.center,
+      cov = fit_MCD2$raw.cov
+    ) <= qchisq(p = .975, df = p)
+  )
+dplyr::near(fit_MCD2$center,colMeans(DATA2[ind_rew_obs,]))
+dplyr::near(fit_MCD2$cov,cov(DATA2[ind_rew_obs,])*prod(fit_MCD2$cnp2))
+```
+```{r}
+plot(fit_MCD2,classic=TRUE)
+```
+```{r}
+n <- nrow(DATA2)
+sample_mean <- apply(DATA2, 2, mean)
+sample_cov <- cov(DATA2)#*(n-1)/n # by default R computes the corrected sample variance
+# MCD estimates
+plot(DATA2, xlim=c(0,100),ylim=c(0,95))
+lines(ellipse(x = fit_MCD2$cov,centre=fit_MCD2$center),lty=2, col="blue",type="l")
+points(x=fit_MCD2$center[1],y=fit_MCD2$center[2], pch="x", col="blue", cex=2)
+# ML estimates
+lines(ellipse(x = sample_cov, centre=sample_mean),lty=2, col="red",type="l")
+points(x=sample_mean[1],y=sample_mean[2], pch="x", col="red", cex=2)
+# Robust estimates
+plot(sqrt(fit_MCD2$mah))
+# Classical estimates
+```
+
+```{r}
+fit_MCD <- covMcd(x = DATA2, alpha = .75)
+fit_MCD
+```
+
+```{r}
+plot(fit_MCD, classic=TRUE, labels.id=FALSE, which="distance")
+plot(fit_MCD,labels.id=FALSE,which=c("dd"))
+```
+#####Robust statistics on the complete dataset
+```{r}
+setwd("C:/Users/marin/OneDrive/Desktop/Erica progetto nps")
+dataset<-read.table("train.csv",header=T,sep=",")
+dataset
+DATA3<-dataset[,3:7]
+DATA3<-DATA3[,-4]
+DATA3
+```
+```{r}
+fit_MCD3 <- covMcd(x = DATA3, alpha = .75, nsamp = "best")
+fit_MCD3
+```
+```{r}
+ind_best_subset3 <- fit_MCD3$best
+N <- nrow(DATA3)
+p <- ncol(DATA3)
+plot(DATA3, col=ifelse(1:N%in%ind_best_subset3,"black","red"),pch=19)
+```
+```{r}
+plot(fit_MCD3,classic=TRUE)
+```
+```{r}
+n <- nrow(DATA3)
+sample_mean <- apply(DATA3, 2, mean)
+sample_cov <- cov(DATA3)#*(n-1)/n # by default R computes the corrected sample variance
+# MCD estimates
+plot(DATA3, xlim=c(0,100),ylim=c(0,95))
+lines(ellipse(x = fit_MCD3$cov,centre=fit_MCD3$center),lty=2, col="blue",type="l")
+points(x=fit_MCD3$center[1],y=fit_MCD3$center[2], pch="x", col="blue", cex=2)
+# ML estimates
+lines(ellipse(x = sample_cov, centre=sample_mean),lty=2, col="red",type="l")
+points(x=sample_mean[1],y=sample_mean[2], pch="x", col="red", cex=2)
+# Robust estimates
+plot(sqrt(fit_MCD3$mah))
+# Classical estimates
+```
+
+
+
+
+
